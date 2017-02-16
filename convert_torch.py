@@ -156,16 +156,16 @@ def lua_recursive_source(module):
 
         if name == 'SpatialConvolution':
             if not hasattr(m,'groups'): m.groups=1
-            s += ['nn.Conv2d({},{},{},{},{},{},{},bias={})'.format(m.nInputPlane,
+            s += ['nn.Conv2d({},{},{},{},{},{},{},bias={}),#Conv2d'.format(m.nInputPlane,
                 m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,m.bias is not None)]
         elif name == 'SpatialBatchNormalization':
-            s += ['nn.BatchNorm2d({},{},{},{})'.format(m.running_mean.size(0), m.eps, m.momentum, m.affine)]
+            s += ['nn.BatchNorm2d({},{},{},{}),#BatchNorm2d'.format(m.running_mean.size(0), m.eps, m.momentum, m.affine)]
         elif name == 'ReLU':
             s += ['nn.ReLU()']
         elif name == 'SpatialMaxPooling':
-            s += ['nn.MaxPool2d({},{},{},ceil_mode={})'.format((m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),m.ceil_mode)]
+            s += ['nn.MaxPool2d({},{},{},ceil_mode={}),#MaxPool2d'.format((m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),m.ceil_mode)]
         elif name == 'SpatialAveragePooling':
-            s += ['nn.AvgPool2d({},{},{},ceil_mode={})'.format((m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),m.ceil_mode)]
+            s += ['nn.AvgPool2d({},{},{},ceil_mode={}),#AvgPool2d'.format((m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),m.ceil_mode)]
         elif name == 'SpatialUpSamplingNearest':
             s += ['nn.UpsamplingNearest2d(scale_factor={})'.format(m.scale_factor)]
         elif name == 'View':
@@ -174,7 +174,7 @@ def lua_recursive_source(module):
         elif name == 'Linear':
             s += ['LambdaMap(lambda x: x.view(1,-1) if 1==len(x.size()) else x ), # Linear hack']
             s += ['LambdaReduce(lambda x: x)']
-            s += ['nn.Linear({},{},bias={})'.format(m.weight.size(1),m.weight.size(0),(m.bias is not None))]
+            s += ['nn.Linear({},{},bias={}),#Linear'.format(m.weight.size(1),m.weight.size(0),(m.bias is not None))]
         elif name == 'Dropout':
             s += ['nn.Dropout({})'.format(m.p)]
         elif name == 'SoftMax':
@@ -220,15 +220,33 @@ def lua_recursive_source(module):
     s = map(lambda x: '\t{}'.format(x),s)
     return s
 
+def simplify_source(s):
+    s = map(lambda x: x.replace(',(1, 1),(0, 0),1,1,bias=True),#Conv2d',')'),s)
+    s = map(lambda x: x.replace(',(0, 0),1,1,bias=True),#Conv2d',')'),s)
+    s = map(lambda x: x.replace(',1,1,bias=True),#Conv2d',')'),s)
+    s = map(lambda x: x.replace(',bias=True),#Conv2d',')'),s)
+    s = map(lambda x: x.replace('),#Conv2d',')'),s)
+    s = map(lambda x: x.replace(',1e-05,0.1,True),#BatchNorm2d',')'),s)
+    s = map(lambda x: x.replace('),#BatchNorm2d',')'),s)
+    s = map(lambda x: x.replace(',(0, 0),ceil_mode=False),#MaxPool2d',')'),s)
+    s = map(lambda x: x.replace(',ceil_mode=False),#MaxPool2d',')'),s)
+    s = map(lambda x: x.replace('),#MaxPool2d',')'),s)
+    s = map(lambda x: x.replace(',(0, 0),ceil_mode=False),#AvgPool2d',')'),s)
+    s = map(lambda x: x.replace(',ceil_mode=False),#AvgPool2d',')'),s)
+    s = map(lambda x: x.replace(',bias=True),#Linear',')'),s)
+    s = map(lambda x: x.replace('),#Linear',')'),s)
+    
+    s = map(lambda x: '{},\n'.format(x),s)
+    s = map(lambda x: x[1:],s)
+    s = reduce(lambda x,y: x+y, s)
+    return s
 
 def torch_to_pytorch(t7_filename,outputname=None):
     model = load_lua(t7_filename,unknown_classes=True)
     if type(model).__name__=='hashable_uniq_dict': model=model.model
     model.gradInput = None
-    s = lua_recursive_source(torch.legacy.nn.Sequential().add(model))
-    s = map(lambda x: '{},\n'.format(x),s)
-    s = map(lambda x: x[1:],s)
-    s = reduce(lambda x,y: x+y, s)
+    slist = lua_recursive_source(torch.legacy.nn.Sequential().add(model))
+    s = simplify_source(slist)
     header = '''
 import torch
 import torch.nn as nn
