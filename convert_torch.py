@@ -53,8 +53,14 @@ def add_submodule(seq, *args):
 def lua_recursive(module,seq):
     for m in module.modules:
         name = type(m).__name__
+        real = m
+        if name in ['TorchObject']:
+            name = m._typename.replace('cudnn.','')
+            m = m._obj
+
         if name in ['SpatialConvolution']:
-            n = nn.Conv2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),bias=(m.bias is not None))
+            if not hasattr(m,'groups'): m.groups=1
+            n = nn.Conv2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,bias=(m.bias is not None))
             copy_param(m,n)
             add_submodule(seq,n)
         elif name in ['SpatialBatchNormalization']:
@@ -108,7 +114,15 @@ def lua_recursive(module,seq):
             n1 = LambdaMap(lambda x: x) # do nothing
             n2 = LambdaReduce(lambda x: x)
             add_submodule(seq,n1,n2)
-
+        elif name in ['Narrow']:
+            n1 = LambdaMap(lambda x,a=(m.dimension,m.index,m.length): x.narrow(*a))
+            n2 = LambdaReduce(lambda x: x)
+            add_submodule(seq,n1,n2)
+        elif name in ['SpatialCrossMapLRN']:
+            lrn = torch.legacy.nn.SpatialCrossMapLRN(m.size,m.alpha,m.beta,m.k)
+            n1 = LambdaMap(lambda x,lrn=lrn: Variable(lrn.forward(x.data)))
+            n2 = LambdaReduce(lambda x: x)
+            add_submodule(seq,n1,n2)
         elif name in ['Sequential']:
             n = nn.Sequential()
             lua_recursive(m,n)
@@ -126,9 +140,9 @@ def lua_recursive(module,seq):
             lua_recursive(m,n)
             add_submodule(seq,n)
         elif name in ['TorchObject']:
-            print(name,m._typename)
+            print('Not Implement',name,real._typename)
         else:
-            print(name)
+            print('Not Implement',name)
 
 
 def lua_pytorch(module,t=0):
@@ -136,9 +150,15 @@ def lua_pytorch(module,t=0):
     for m in module.modules:
         s += '\t'*t
         name = type(m).__name__
+        real = m
+        if name in ['TorchObject']:
+            name = m._typename.replace('cudnn.','')
+            m = m._obj
+
         if name in ['SpatialConvolution']:
-            s += 'nn.Conv2d({},{},{},{},{},bias={}),\n'.format(m.nInputPlane,
-                m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),m.bias is not None)
+            if not hasattr(m,'groups'): m.groups=1
+            s += 'nn.Conv2d({},{},{},{},{},{},{},bias={}),\n'.format(m.nInputPlane,
+                m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,m.bias is not None)
         elif name in ['SpatialBatchNormalization']:
             s += 'nn.BatchNorm2d({},{},{},{}),\n'.format(m.running_mean.size(0), m.eps, m.momentum, m.affine)
         elif name in ['ReLU']:
@@ -173,6 +193,13 @@ def lua_pytorch(module,t=0):
         elif name in ['Copy']:
             s += 'LambdaMap(lambda x: x), # Copy\n'
             s += '\t'*t + 'LambdaReduce(lambda x: x),\n'
+        elif name in ['Narrow']:
+            s += 'LambdaMap(lambda x,a={}: x.narrow(*a)),\n'.format((m.dimension,m.index,m.length))
+            s += '\t'*t + 'LambdaReduce(lambda x: x),\n'
+        elif name in ['SpatialCrossMapLRN']:
+            lrn = 'torch.legacy.nn.SpatialCrossMapLRN(*{})'.format((m.size,m.alpha,m.beta,m.k))
+            s += 'LambdaMap(lambda x,lrn={}: Variable(lrn.forward(x.data))),\n'.format(lrn)
+            s += '\t'*t + 'LambdaReduce(lambda x: x),\n'
 
         elif name in ['Sequential']:
             s += 'nn.Sequential(\n'
@@ -196,6 +223,7 @@ def lua_pytorch(module,t=0):
 
 def torch_to_pytorch(t7_filename,outputname=None):
     model = load_lua(t7_filename,unknown_classes=True)
+    if type(model).__name__=='hashable_uniq_dict': model=model.model
     model.gradInput = None
     s = lua_pytorch(torch.legacy.nn.Sequential().add(model))
     header = '''
