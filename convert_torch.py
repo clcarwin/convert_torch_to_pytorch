@@ -10,7 +10,6 @@ from torch.utils.serialization import load_lua
 import numpy as np
 import os
 import math
-import cv2
 
 class LambdaBase(nn.Module):
     def __init__(self, *args):
@@ -283,7 +282,7 @@ class LambdaReduce(LambdaBase):
 parser = argparse.ArgumentParser(description='Convert torch t7 model to pytorch')
 parser.add_argument('--model','-m', type=str, required=True,
                     help='torch model file in t7 format')
-parser.add_argument('--output', '-o', type=int, default=None,
+parser.add_argument('--output', '-o', type=str, default=None,
                     help='output file name prefix, xxx.py xxx.pth')
 args = parser.parse_args()
 
