@@ -16,3 +16,17 @@ model.load_state_dict(torch.load('vgg16.pth'))
 model.eval()
 ...
 ```
+## Validated
+All the models in this table can be converted and the results have been validated.
+
+| Network             | Download |
+| ------------------- | -------- |
+| AlexNet | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| Inception-V1 | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| VGG-16 | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| VGG-19 | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| ResNet-18 | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| ResNet-200 | [cnn-benchmarks](https://github.com/jcjohnson/cnn-benchmarks) |
+| ResNeXt-50 (32x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
+| ResNeXt-101 (32x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
+| ResNeXt-101 (64x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
