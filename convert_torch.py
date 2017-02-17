@@ -11,13 +11,10 @@ import numpy as np
 import os
 import math
 
-class LambdaBase(nn.Module):
-    def __init__(self, *args):
-        super(LambdaBase, self).__init__()
-        self.lambda_func = None
-        for m in args:
-            if type(m).__name__ == 'function': self.lambda_func = m
-            else: self.add_module(str(len(self._modules)), m)
+class LambdaBase(nn.Sequential):
+    def __init__(self, fn, *args):
+        super(LambdaBase, self).__init__(*args)
+        self.lambda_func = fn
 
     def forward_prepare(self, input):
         output = []
@@ -242,13 +239,11 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-class LambdaBase(nn.Module):
-    def __init__(self, *args):
-        super(LambdaBase, self).__init__()
-        self.lambda_func = None
-        for m in args:
-            if type(m).__name__ == 'function': self.lambda_func = m
-            else: self.add_module(str(len(self._modules)), m)
+class LambdaBase(nn.Sequential):
+    def __init__(self, fn, *args):
+        super(LambdaBase, self).__init__(*args)
+        self.lambda_func = fn
+
     def forward_prepare(self, input):
         output = []
         for module in self._modules.values():
