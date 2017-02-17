@@ -12,9 +12,9 @@ import os
 import math
 import cv2
 
-class LambdaLayer(nn.Module):
+class LambdaBase(nn.Module):
     def __init__(self, *args):
-        super(LambdaLayer, self).__init__()
+        super(LambdaBase, self).__init__()
         self.lambda_func = None
         for m in args:
             if type(m).__name__ == 'function': self.lambda_func = m
@@ -24,17 +24,18 @@ class LambdaLayer(nn.Module):
         output = []
         for module in self._modules.values():
             output.append(module(input))
-        if 0==len(output):
-            if type(input) is list: output = input
-            else: output = [input]
-        return output
+        return output if output else input
 
-class LambdaMap(LambdaLayer):
+class Lambda(LambdaBase):
+    def forward(self, input):
+        return self.lambda_func(self.forward_prepare(input))
+
+class LambdaMap(LambdaBase):
     def forward(self, input):
         # result is Variables list [Variable1, Variable2, ...]
         return map(self.lambda_func,self.forward_prepare(input))
 
-class LambdaReduce(LambdaLayer):
+class LambdaReduce(LambdaBase):
     def forward(self, input):
         # result is a Variable
         return reduce(self.lambda_func,self.forward_prepare(input))
@@ -80,16 +81,15 @@ def lua_recursive_model(module,seq):
             n = nn.UpsamplingNearest2d(scale_factor=m.scale_factor)
             add_submodule(seq,n)
         elif name == 'View':
-            n1 = LambdaMap(lambda x,s=m.size: x.view(s))
-            n2 = LambdaReduce(lambda x: x)
-            add_submodule(seq,n1,n2)
+            n = Lambda(lambda x,s=m.size: x.view(s))
+            add_submodule(seq,n)
         elif name == 'Linear':
             # Linear in pytorch only accept 2D input
-            n1 = LambdaMap(lambda x: x.view(1,-1) if 1==len(x.size()) else x )
-            n2 = LambdaReduce(lambda x: x)
-            n3 = nn.Linear(m.weight.size(1),m.weight.size(0),bias=(m.bias is not None))
-            copy_param(m,n3)
-            add_submodule(seq,n1,n2,n3)
+            n1 = Lambda(lambda x: x.view(1,-1) if 1==len(x.size()) else x )
+            n2 = nn.Linear(m.weight.size(1),m.weight.size(0),bias=(m.bias is not None))
+            copy_param(m,n2)
+            n = nn.Sequential(n1,n2)
+            add_submodule(seq,n)
         elif name == 'Dropout':
             m.inplace = False
             n = nn.Dropout(m.p)
@@ -98,9 +98,8 @@ def lua_recursive_model(module,seq):
             n = nn.Softmax()
             add_submodule(seq,n)
         elif name == 'Identity':
-            n1 = LambdaMap(lambda x: x) # do nothing
-            n2 = LambdaReduce(lambda x: x)
-            add_submodule(seq,n1,n2)
+            n = Lambda(lambda x: x) # do nothing
+            add_submodule(seq,n)
         elif name == 'SpatialFullConvolution':
             n = nn.ConvTranspose2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH))
             add_submodule(seq,n)
@@ -111,18 +110,15 @@ def lua_recursive_model(module,seq):
             n = nn.ReflectionPad2d((m.pad_l,m.pad_r,m.pad_t,m.pad_b))
             add_submodule(seq,n)
         elif name == 'Copy':
-            n1 = LambdaMap(lambda x: x) # do nothing
-            n2 = LambdaReduce(lambda x: x)
-            add_submodule(seq,n1,n2)
+            n = Lambda(lambda x: x) # do nothing
+            add_submodule(seq,n)
         elif name == 'Narrow':
-            n1 = LambdaMap(lambda x,a=(m.dimension,m.index,m.length): x.narrow(*a))
-            n2 = LambdaReduce(lambda x: x)
-            add_submodule(seq,n1,n2)
+            n = Lambda(lambda x,a=(m.dimension,m.index,m.length): x.narrow(*a))
+            add_submodule(seq,n)
         elif name == 'SpatialCrossMapLRN':
             lrn = torch.legacy.nn.SpatialCrossMapLRN(m.size,m.alpha,m.beta,m.k)
-            n1 = LambdaMap(lambda x,lrn=lrn: Variable(lrn.forward(x.data)))
-            n2 = LambdaReduce(lambda x: x)
-            add_submodule(seq,n1,n2)
+            n = Lambda(lambda x,lrn=lrn: Variable(lrn.forward(x.data)))
+            add_submodule(seq,n)
         elif name == 'Sequential':
             n = nn.Sequential()
             lua_recursive_model(m,n)
@@ -169,19 +165,17 @@ def lua_recursive_source(module):
         elif name == 'SpatialUpSamplingNearest':
             s += ['nn.UpsamplingNearest2d(scale_factor={})'.format(m.scale_factor)]
         elif name == 'View':
-            s += ['LambdaMap(lambda x,s={}: x.view(s)), # View'.format(m.size)]
-            s += ['LambdaReduce(lambda x: x)']
+            s += ['Lambda(lambda x,s={}: x.view(s)), # View'.format(m.size)]
         elif name == 'Linear':
-            s += ['LambdaMap(lambda x: x.view(1,-1) if 1==len(x.size()) else x ), # Linear hack']
-            s += ['LambdaReduce(lambda x: x)']
-            s += ['nn.Linear({},{},bias={}),#Linear'.format(m.weight.size(1),m.weight.size(0),(m.bias is not None))]
+            s1 = 'Lambda(lambda x: x.view(1,-1) if 1==len(x.size()) else x )'
+            s2 = 'nn.Linear({},{},bias={})'.format(m.weight.size(1),m.weight.size(0),(m.bias is not None))
+            s += ['nn.Sequential({},{}),#Linear'.format(s1,s2)]
         elif name == 'Dropout':
             s += ['nn.Dropout({})'.format(m.p)]
         elif name == 'SoftMax':
             s += ['nn.Softmax()']
         elif name == 'Identity':
-            s += ['LambdaMap(lambda x: x), # Identity']
-            s += ['LambdaReduce(lambda x: x)']
+            s += ['Lambda(lambda x: x), # Identity']
         elif name == 'SpatialFullConvolution':
             s += ['nn.ConvTranspose2d({},{},{},{},{})'.format(m.nInputPlane,
                 m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH))]
@@ -190,15 +184,12 @@ def lua_recursive_source(module):
         elif name == 'SpatialReflectionPadding':
             s += ['nn.ReflectionPad2d({})'.format((m.pad_l,m.pad_r,m.pad_t,m.pad_b))]
         elif name == 'Copy':
-            s += ['LambdaMap(lambda x: x), # Copy']
-            s += ['LambdaReduce(lambda x: x)']
+            s += ['Lambda(lambda x: x), # Copy']
         elif name == 'Narrow':
-            s += ['LambdaMap(lambda x,a={}: x.narrow(*a))'.format((m.dimension,m.index,m.length))]
-            s += ['LambdaReduce(lambda x: x)']
+            s += ['Lambda(lambda x,a={}: x.narrow(*a))'.format((m.dimension,m.index,m.length))]
         elif name == 'SpatialCrossMapLRN':
             lrn = 'torch.legacy.nn.SpatialCrossMapLRN(*{})'.format((m.size,m.alpha,m.beta,m.k))
-            s += ['LambdaMap(lambda x,lrn={}: Variable(lrn.forward(x.data)))'.format(lrn)]
-            s += ['LambdaReduce(lambda x: x)']
+            s += ['Lambda(lambda x,lrn={}: Variable(lrn.forward(x.data)))'.format(lrn)]
 
         elif name == 'Sequential':
             s += ['nn.Sequential( # Sequential']
@@ -233,8 +224,8 @@ def simplify_source(s):
     s = map(lambda x: x.replace('),#MaxPool2d',')'),s)
     s = map(lambda x: x.replace(',(0, 0),ceil_mode=False),#AvgPool2d',')'),s)
     s = map(lambda x: x.replace(',ceil_mode=False),#AvgPool2d',')'),s)
-    s = map(lambda x: x.replace(',bias=True),#Linear',')'),s)
-    s = map(lambda x: x.replace('),#Linear',')'),s)
+    s = map(lambda x: x.replace(',bias=True)),#Linear',')), # Linear'),s)
+    s = map(lambda x: x.replace(')),#Linear',')), # Linear'),s)
     
     s = map(lambda x: '{},\n'.format(x),s)
     s = map(lambda x: x[1:],s)
@@ -250,10 +241,11 @@ def torch_to_pytorch(t7_filename,outputname=None):
     header = '''
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
-class LambdaLayer(nn.Module):
+class LambdaBase(nn.Module):
     def __init__(self, *args):
-        super(LambdaLayer, self).__init__()
+        super(LambdaBase, self).__init__()
         self.lambda_func = None
         for m in args:
             if type(m).__name__ == 'function': self.lambda_func = m
@@ -262,16 +254,17 @@ class LambdaLayer(nn.Module):
         output = []
         for module in self._modules.values():
             output.append(module(input))
-        if 0==len(output):
-            if type(input) is list: output = input
-            else: output = [input]
-        return output
+        return output if output else input
 
-class LambdaMap(LambdaLayer):
+class Lambda(LambdaBase):
+    def forward(self, input):
+        return self.lambda_func(self.forward_prepare(input))
+
+class LambdaMap(LambdaBase):
     def forward(self, input):
         return map(self.lambda_func,self.forward_prepare(input))
 
-class LambdaReduce(LambdaLayer):
+class LambdaReduce(LambdaBase):
     def forward(self, input):
         return reduce(self.lambda_func,self.forward_prepare(input))
 '''
