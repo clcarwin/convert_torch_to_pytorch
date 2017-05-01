@@ -1,15 +1,26 @@
 from __future__ import print_function
+
 import argparse
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.serialization import load_lua
 
-import numpy as np
-import os
-import math
+supported_rnns = {'RNNReLU', 'RNNTanh', 'GRU', 'BGRU', 'LSTM', 'BLSTM'}
+
+
+class LegacyRNN(nn.Module):
+    def __init__(self, rnn):
+        """
+        Handles removing the hidden state for torch lua legacy support.
+        """
+        super(LegacyRNN, self).__init__()
+        self.rnn = rnn
+
+    def forward(self, input):
+        input, _ = self.rnn(input)
+        return input
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):
@@ -37,6 +48,48 @@ class LambdaReduce(LambdaBase):
         return reduce(self.lambda_func,self.forward_prepare(input))
 
 
+def rnn_source(name, m):
+    rnn_name = 'nn.{}(input_size={}, hidden_size={}, bidirectional={}, dropout={}, batch_first={}, num_layers={}'
+    bidirectional = m.numDirections == 2
+    if 'RNN' in name:
+        nonlinearity = '\'relu\'' if 'RELU' in m.mode else '\'tanh\''
+        rnn_name += ', nonlinearity={}'
+        rnn_name = rnn_name.format('RNN', m.inputSize, m.hiddenSize, bidirectional, m.dropout, m.batchFirst,
+                                   m.numLayers, nonlinearity)
+    elif 'LSTM' in name:
+        rnn_name = rnn_name.format('LSTM', m.inputSize, m.hiddenSize, bidirectional, m.dropout, m.batchFirst,
+                                   m.numLayers)
+    elif 'GRU' in name:
+        rnn_name = rnn_name.format('GRU', m.inputSize, m.hiddenSize, bidirectional, m.dropout, m.batchFirst,
+                                   m.numLayers)
+    rnn_name += ')'
+    return rnn_name
+
+
+def convert_rnn(name, m):
+    n = None
+    bidirectional = m.numDirections == 2
+    if 'RNN' in name:
+        nonlinearity = 'relu' if 'RELU' in m.mode else 'tanh'
+        n = nn.RNN(input_size=m.inputSize, hidden_size=m.hiddenSize, nonlinearity=nonlinearity,
+                   bidirectional=bidirectional,
+                   dropout=m.dropout, batch_first=m.batchFirst, num_layers=m.numLayers)
+    elif 'LSTM' in name:
+        n = nn.LSTM(input_size=m.inputSize, hidden_size=m.hiddenSize, bidirectional=bidirectional, dropout=m.dropout,
+                    batch_first=m.batchFirst, num_layers=m.numLayers)
+    elif 'GRU' in name:
+        n = nn.GRU(input_size=m.inputSize, hidden_size=m.hiddenSize, bidirectional=bidirectional, dropout=m.dropout,
+                   batch_first=m.batchFirst, num_layers=m.numLayers)
+    if n is not None:
+        n_weights = n.all_weights
+        m_weights = m.all_weights
+        for nlayer in range(len(n_weights)):
+            layer_weights = n_weights[nlayer]
+            for nweight in range(len(layer_weights)):
+                layer_weights[nweight].data.copy_(m_weights[nlayer][nweight])
+    return n
+
+
 def copy_param(m,n):
     if m.weight is not None: n.weight.data.copy_(m.weight)
     if m.bias is not None: n.bias.data.copy_(m.bias)
@@ -54,7 +107,6 @@ def lua_recursive_model(module,seq):
         if name == 'TorchObject':
             name = m._typename.replace('cudnn.','')
             m = m._obj
-
         if name == 'SpatialConvolution':
             if not hasattr(m,'groups'): m.groups=1
             n = nn.Conv2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,bias=(m.bias is not None))
@@ -131,6 +183,13 @@ def lua_recursive_model(module,seq):
             n = LambdaReduce(lambda x,y,dim=dim: torch.cat((x,y),dim))
             lua_recursive_model(m,n)
             add_submodule(seq,n)
+        elif name in supported_rnns:
+            n = convert_rnn(name, m)
+            n = LegacyRNN(n)
+            if n is None:
+                print('RNN not recognized: %s' % m.name)
+            else:
+                add_submodule(seq, n)
         elif name == 'TorchObject':
             print('Not Implement',name,real._typename)
         else:
@@ -198,10 +257,11 @@ def lua_recursive_source(module):
         elif name == 'CAddTable':
             s += ['LambdaReduce(lambda x,y: x+y), # CAddTable']
         elif name == 'Concat':
-            dim = m.dimension
             s += ['LambdaReduce(lambda x,y,dim={}: torch.cat((x,y),dim), # Concat'.format(m.dimension)]
             s += lua_recursive_source(m)
             s += [')']
+        elif name in supported_rnns:
+            s += ['LegacyRNN(' + rnn_source(name, m) + ')']
         else:
             s += '# ' + name + ' Not Implement,\n'
     s = map(lambda x: '\t{}'.format(x),s)
@@ -222,7 +282,7 @@ def simplify_source(s):
     s = map(lambda x: x.replace(',ceil_mode=False),#AvgPool2d',')'),s)
     s = map(lambda x: x.replace(',bias=True)),#Linear',')), # Linear'),s)
     s = map(lambda x: x.replace(')),#Linear',')), # Linear'),s)
-    
+
     s = map(lambda x: '{},\n'.format(x),s)
     s = map(lambda x: x[1:],s)
     s = reduce(lambda x,y: x+y, s)
@@ -238,6 +298,19 @@ def torch_to_pytorch(t7_filename,outputname=None):
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+
+
+class LegacyRNN(nn.Module):
+    def __init__(self, rnn):
+        """
+        Handles removing of the hidden state for torch lua legacy support.
+        """
+        super(LegacyRNN, self).__init__()
+        self.rnn = rnn
+
+    def forward(self, input):
+        input, _ = self.rnn(input)
+        return input
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):

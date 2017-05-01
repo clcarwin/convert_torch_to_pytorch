@@ -1,5 +1,5 @@
 # Convert torch to pytorch
-Convert torch t7 model to pytorch model and source.
+Convert torch t7 model to pytorch model and source including cuDNN supported RNNs.
 
 ## Convert
 ```bash
@@ -16,6 +16,14 @@ model.load_state_dict(torch.load('vgg16.pth'))
 model.eval()
 ...
 ```
+
+## Convert models including cuDNN RNN modules
+
+```bash
+th process_rnns.lua -model rnn_model.t7 -output rnn_model_processed.t7
+python convert_torch -m rnn_model_processed.t7
+```
+
 ## Validated
 All the models in this table can be converted and the results have been validated.
 
