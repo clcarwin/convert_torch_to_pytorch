@@ -25,28 +25,27 @@ local function process_rnn(rnn, gateSize)
     local inputSize = rnn.inputSize
     local hiddenSize = rnn.hiddenSize
     local directions = rnn.numDirections
-    local numLayers = rnn.numLayers
     local weights = rnn:weights()
     local biases = rnn:biases()
     -- store for weights in cuDNN format
     rnn.all_weights = {}
-    for nLayer = 1, numLayers / directions do
-        for direction = 0, directions - 1 do
+    for nLayer = 1, #weights, directions do
+        for x = 0, directions - 1 do
             local layerInputSize = nLayer == 1 and inputSize or hiddenSize * directions
             local wi = torch.FloatTensor(gateSize, layerInputSize * hiddenSize)
             local wh = torch.FloatTensor(gateSize, hiddenSize * hiddenSize)
             local bi = torch.FloatTensor(gateSize, hiddenSize)
             local bh = torch.FloatTensor(gateSize, hiddenSize)
 
-            local layerWeights = weights[nLayer + direction]
-            local layerBiases = biases[nLayer + direction]
+            local layerWeights = weights[nLayer + x]
+            local layerBiases = biases[nLayer + x]
             for x = 1, gateSize do
                 wi[x]:copy(layerWeights[x])
                 wh[x]:copy(layerWeights[x + gateSize])
                 bi[x]:copy(layerBiases[x])
                 bh[x]:copy(layerBiases[x + gateSize])
             end
-            rnn.all_weights[#rnn.all_weights] = { wi, wh, bi, bh }
+            rnn.all_weights[nLayer + x] = { wi, wh, bi, bh }
         end
     end
     return rnn
