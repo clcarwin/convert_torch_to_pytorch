@@ -10,6 +10,7 @@ from torch.utils.serialization import load_lua
 import numpy as np
 import os
 import math
+from functools import reduce
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):
@@ -29,7 +30,7 @@ class Lambda(LambdaBase):
 class LambdaMap(LambdaBase):
     def forward(self, input):
         # result is Variables list [Variable1, Variable2, ...]
-        return map(self.lambda_func,self.forward_prepare(input))
+        return list(map(self.lambda_func,self.forward_prepare(input)))
 
 class LambdaReduce(LambdaBase):
     def forward(self, input):
@@ -238,6 +239,7 @@ def torch_to_pytorch(t7_filename,outputname=None):
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+from functools import reduce
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):
@@ -256,7 +258,7 @@ class Lambda(LambdaBase):
 
 class LambdaMap(LambdaBase):
     def forward(self, input):
-        return map(self.lambda_func,self.forward_prepare(input))
+        return list(map(self.lambda_func,self.forward_prepare(input)))
 
 class LambdaReduce(LambdaBase):
     def forward(self, input):
