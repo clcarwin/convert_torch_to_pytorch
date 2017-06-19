@@ -56,8 +56,8 @@ def lua_recursive_model(module,seq):
             name = m._typename.replace('cudnn.','')
             m = m._obj
 
-        if name == 'SpatialConvolution':
-            if not hasattr(m,'groups'): m.groups=1
+        if name == 'SpatialConvolution' or name == 'nn.SpatialConvolutionMM':
+            if not hasattr(m,'groups') or m.groups is None: m.groups=1
             n = nn.Conv2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,bias=(m.bias is not None))
             copy_param(m,n)
             add_submodule(seq,n)
@@ -147,8 +147,8 @@ def lua_recursive_source(module):
             name = m._typename.replace('cudnn.','')
             m = m._obj
 
-        if name == 'SpatialConvolution':
-            if not hasattr(m,'groups'): m.groups=1
+        if name == 'SpatialConvolution' or name == 'nn.SpatialConvolutionMM':
+            if not hasattr(m,'groups') or m.groups is None: m.groups=1
             s += ['nn.Conv2d({},{},{},{},{},{},{},bias={}),#Conv2d'.format(m.nInputPlane,
                 m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),1,m.groups,m.bias is not None)]
         elif name == 'SpatialBatchNormalization':
