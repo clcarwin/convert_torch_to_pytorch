@@ -80,6 +80,9 @@ def lua_recursive_model(module,seq):
         elif name == 'View':
             n = Lambda(lambda x: x.view(x.size(0),-1))
             add_submodule(seq,n)
+        elif name == 'Reshape':
+            n = Lambda(lambda x: x.view(x.size(0),-1))
+            add_submodule(seq,n)
         elif name == 'Linear':
             # Linear in pytorch only accept 2D input
             n1 = Lambda(lambda x: x.view(1,-1) if 1==len(x.size()) else x )
@@ -163,6 +166,8 @@ def lua_recursive_source(module):
             s += ['nn.UpsamplingNearest2d(scale_factor={})'.format(m.scale_factor)]
         elif name == 'View':
             s += ['Lambda(lambda x: x.view(x.size(0),-1)), # View']
+        elif name == 'Reshape':
+            s += ['Lambda(lambda x: x.view(x.size(0),-1)), # Reshape']
         elif name == 'Linear':
             s1 = 'Lambda(lambda x: x.view(1,-1) if 1==len(x.size()) else x )'
             s2 = 'nn.Linear({},{},bias={})'.format(m.weight.size(1),m.weight.size(0),(m.bias is not None))

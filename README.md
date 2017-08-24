@@ -30,3 +30,5 @@ All the models in this table can be converted and the results have been validate
 | ResNeXt-50 (32x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
 | ResNeXt-101 (32x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
 | ResNeXt-101 (64x4d) | [ResNeXt](https://github.com/facebookresearch/ResNeXt) |
+| DenseNet-264 (k=32) | [DenseNet](https://github.com/liuzhuang13/DenseNet#results-on-imagenet-and-pretrained-models) |
+| DenseNet-264 (k=48) | [DenseNet](https://github.com/liuzhuang13/DenseNet#results-on-imagenet-and-pretrained-models) |
