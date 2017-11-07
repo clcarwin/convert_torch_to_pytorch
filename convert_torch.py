@@ -1,16 +1,18 @@
 from __future__ import print_function
-import argparse
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.autograd import Variable
-from torch.utils.serialization import load_lua
 
-import numpy as np
 import os
 import math
+import torch
+import argparse
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim
+import torch.legacy.nn as lnn
+import torch.nn.functional as F
+
 from functools import reduce
+from torch.autograd import Variable
+from torch.utils.serialization import load_lua
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):
@@ -126,7 +128,7 @@ def lua_recursive_model(module,seq):
             n = Lambda(lambda x,a=(m.dimension,m.index,m.length): x.narrow(*a))
             add_submodule(seq,n)
         elif name == 'SpatialCrossMapLRN':
-            lrn = torch.legacy.nn.SpatialCrossMapLRN(m.size,m.alpha,m.beta,m.k)
+            lrn = lnn.SpatialCrossMapLRN(m.size,m.alpha,m.beta,m.k)
             n = Lambda(lambda x,lrn=lrn: Variable(lrn.forward(x.data)))
             add_submodule(seq,n)
         elif name == 'Sequential':
@@ -207,7 +209,7 @@ def lua_recursive_source(module):
         elif name == 'Narrow':
             s += ['Lambda(lambda x,a={}: x.narrow(*a))'.format((m.dimension,m.index,m.length))]
         elif name == 'SpatialCrossMapLRN':
-            lrn = 'torch.legacy.nn.SpatialCrossMapLRN(*{})'.format((m.size,m.alpha,m.beta,m.k))
+            lrn = 'lnn.SpatialCrossMapLRN(*{})'.format((m.size,m.alpha,m.beta,m.k))
             s += ['Lambda(lambda x,lrn={}: Variable(lrn.forward(x.data)))'.format(lrn)]
 
         elif name == 'Sequential':
@@ -255,13 +257,15 @@ def torch_to_pytorch(t7_filename,outputname=None):
     model = load_lua(t7_filename,unknown_classes=True)
     if type(model).__name__=='hashable_uniq_dict': model=model.model
     model.gradInput = None
-    slist = lua_recursive_source(torch.legacy.nn.Sequential().add(model))
+    slist = lua_recursive_source(lnn.Sequential().add(model))
     s = simplify_source(slist)
     header = '''
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
+import torch.legacy.nn as lnn
+
 from functools import reduce
+from torch.autograd import Variable
 
 class LambdaBase(nn.Sequential):
     def __init__(self, fn, *args):
