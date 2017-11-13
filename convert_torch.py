@@ -110,10 +110,12 @@ def lua_recursive_model(module,seq):
             n = Lambda(lambda x: x) # do nothing
             add_submodule(seq,n)
         elif name == 'SpatialFullConvolution':
-            n = nn.ConvTranspose2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH))
+            n = nn.ConvTranspose2d(m.nInputPlane,m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),(m.adjW,m.adjH))
+            copy_param(m,n)
             add_submodule(seq,n)
         elif name == 'VolumetricFullConvolution':
-            n = nn.ConvTranspose3d(m.nInputPlane,m.nOutputPlane,(m.kT,m.kW,m.kH),(m.dT,m.dW,m.dH),(m.padT,m.padW,m.padH))
+            n = nn.ConvTranspose3d(m.nInputPlane,m.nOutputPlane,(m.kT,m.kW,m.kH),(m.dT,m.dW,m.dH),(m.padT,m.padW,m.padH),(m.adjT,m.adjW,m.adjH),m.groups)
+            copy_param(m,n)
             add_submodule(seq, n)
         elif name == 'SpatialReplicationPadding':
             n = nn.ReplicationPad2d((m.pad_l,m.pad_r,m.pad_t,m.pad_b))
@@ -195,11 +197,11 @@ def lua_recursive_source(module):
         elif name == 'Identity':
             s += ['Lambda(lambda x: x), # Identity']
         elif name == 'SpatialFullConvolution':
-            s += ['nn.ConvTranspose2d({},{},{},{},{})'.format(m.nInputPlane,
-                m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH))]
+            s += ['nn.ConvTranspose2d({},{},{},{},{},{})'.format(m.nInputPlane,
+                m.nOutputPlane,(m.kW,m.kH),(m.dW,m.dH),(m.padW,m.padH),(m.adjW,m.adjH))]
         elif name == 'VolumetricFullConvolution':
-            s += ['nn.ConvTranspose3d({},{},{},{},{})'.format(m.nInputPlane,
-                m.nOutputPlane,(m.kT,m.kW,m.kH),(m.dT,m.dW,m.dH),(m.padT,m.padW,m.padH))]
+            s += ['nn.ConvTranspose3d({},{},{},{},{},{},{})'.format(m.nInputPlane,
+                m.nOutputPlane,(m.kT,m.kW,m.kH),(m.dT,m.dW,m.dH),(m.padT,m.padW,m.padH),(m.adjT,m.adjW,m.adjH),m.groups)]
         elif name == 'SpatialReplicationPadding':
             s += ['nn.ReplicationPad2d({})'.format((m.pad_l,m.pad_r,m.pad_t,m.pad_b))]
         elif name == 'SpatialReflectionPadding':
@@ -247,7 +249,7 @@ def simplify_source(s):
     s = map(lambda x: x.replace(',ceil_mode=False),#AvgPool2d',')'),s)
     s = map(lambda x: x.replace(',bias=True)),#Linear',')), # Linear'),s)
     s = map(lambda x: x.replace(')),#Linear',')), # Linear'),s)
-    
+
     s = map(lambda x: '{},\n'.format(x),s)
     s = map(lambda x: x[1:],s)
     s = reduce(lambda x,y: x+y, s)
