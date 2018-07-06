@@ -242,42 +242,17 @@ def simplify_source(s):
 
 def torch_to_pytorch(t7_filename, outputname=None):
     model = load_lua(t7_filename, unknown_classes=True)
-    if type(model).__name__ == 'hashable_uniq_dict': model = model.model
+    if type(model).__name__ == 'hashable_uniq_dict':
+        model = model.model
     model.gradInput = None
+
     slist = lua_recursive_source(lnn.Sequential().add(model))
     s = simplify_source(slist)
-    header = '''
-import torch
-import torch.nn as nn
-import torch.legacy.nn as lnn
 
-from functools import reduce
-from torch.autograd import Variable
+    varname = os.path.basename(t7_filename).replace('.t7', '').replace('.', '_').replace('-', '_')
 
-class LambdaBase(nn.Sequential):
-    def __init__(self, fn, *args):
-        super(LambdaBase, self).__init__(*args)
-        self.lambda_func = fn
-
-    def forward_prepare(self, input):
-        output = []
-        for module in self._modules.values():
-            output.append(module(input))
-        return output if output else input
-
-class Lambda(LambdaBase):
-    def forward(self, input):
-        return self.lambda_func(self.forward_prepare(input))
-
-class LambdaMap(LambdaBase):
-    def forward(self, input):
-        return list(map(self.lambda_func,self.forward_prepare(input)))
-
-class LambdaReduce(LambdaBase):
-    def forward(self, input):
-        return reduce(self.lambda_func,self.forward_prepare(input))
-'''
-    varname = t7_filename.replace('.t7', '').replace('.', '_').replace('-', '_')
+    with open("header.py") as f:
+        header = f.read()
     s = '{}\n\n{} = {}'.format(header, varname, s[:-2])
 
     if outputname is None: outputname = varname
