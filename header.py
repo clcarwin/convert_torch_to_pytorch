@@ -83,7 +83,7 @@ class Dropout2d(nn.Dropout2d):
         return super(Dropout2d, self).forward(input)
 
 
-class StatefulMaxPool2d(nn.MaxPool2d): # object keeps indices and input sizes
+class StatefulMaxPool2d(nn.MaxPool2d):  # object keeps indices and input sizes
 
     def __init__(self, *args, **kwargs):
         super(StatefulMaxPool2d, self).__init__(*args, **kwargs)

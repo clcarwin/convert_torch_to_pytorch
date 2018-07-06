@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import re
 import math
 import torch
 import argparse
@@ -14,18 +15,18 @@ from functools import reduce
 from torch.autograd import Variable
 from torch.utils.serialization import load_lua
 
-from header import LambdaBase, Lambda, LambdaMap, LambdaReduce
+from header import LambdaBase, Lambda, LambdaMap, LambdaReduce, StatefulMaxPool2d, StatefulMaxUnpool2d
 
 
 def copy_param(m, n):
     if m.weight is not None:
-        n.weight.data.copy_(m.weight, broadcast=False)
+        n.weight.data.copy_(m.weight)
     if hasattr(m, 'bias') and m.bias is not None:
-        n.bias.data.copy_(m.bias, broadcast=False)
+        n.bias.data.copy_(m.bias)
     if hasattr(n, 'running_mean'):
-        n.running_mean.copy_(m.running_mean, broadcast=False)
+        n.running_mean.copy_(m.running_mean)
     if hasattr(n, 'running_var'):
-        n.running_var.copy_(m.running_var, broadcast=False)
+        n.running_var.copy_(m.running_var)
 
 
 def add_submodule(seq, *args):
