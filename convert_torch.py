@@ -182,7 +182,7 @@ class Convertor(object):
 
             if name == 'SpatialConvolution' or name == 'nn.SpatialConvolutionMM':
                 if not hasattr(m, 'groups') or m.groups is None: m.groups = 1
-                s += ['nn.Conv2d({}, {}, {}, {}, {}, {}, {},bias={}), #Conv2d'.format(m.nInputPlane,
+                s += ['nn.Conv2d({}, {}, {}, {}, {}, {}, {}, bias={}), #Conv2d'.format(m.nInputPlane,
                                                                                       m.nOutputPlane, (m.kW, m.kH), (m.dW, m.dH), (m.padW, m.padH), 1, m.groups,
                                                                                       m.bias is not None)]
             elif name == 'SpatialBatchNormalization':
@@ -217,7 +217,7 @@ class Convertor(object):
                 s += ['Lambda(lambda x: x.view(x.size(0),-1)), # Reshape']
             elif name == 'Linear':
                 s1 = 'Lambda(lambda x: x.view(1,-1) if 1==len(x.size()) else x )'
-                s2 = 'nn.Linear({},{},bias={})'.format(m.weight.size(1), m.weight.size(0), (m.bias is not None))
+                s2 = 'nn.Linear({}, {}, bias={})'.format(m.weight.size(1), m.weight.size(0), (m.bias is not None))
                 s += ['nn.Sequential({}, {}), #Linear'.format(s1, s2)]
             elif name == 'Dropout':
                 s += ['nn.Dropout({})'.format(m.p)]
@@ -226,10 +226,10 @@ class Convertor(object):
             elif name == 'Identity':
                 s += ['Lambda(lambda x: x), # Identity']
             elif name == 'SpatialFullConvolution':
-                s += ['nn.ConvTranspose2d({},{},{},{},{},{})'.format(m.nInputPlane,
+                s += ['nn.ConvTranspose2d({}, {}, {}, {}, {}, {})'.format(m.nInputPlane,
                                                                      m.nOutputPlane, (m.kW, m.kH), (m.dW, m.dH), (m.padW, m.padH), (m.adjW, m.adjH))]
             elif name == 'VolumetricFullConvolution':
-                s += ['nn.ConvTranspose3d({},{},{},{},{},{},{})'.format(m.nInputPlane,
+                s += ['nn.ConvTranspose3d({}, {}, {}, {}, {}, {}, {})'.format(m.nInputPlane,
                                                                         m.nOutputPlane, (m.kT, m.kW, m.kH), (m.dT, m.dW, m.dH), (m.padT, m.padW, m.padH), (m.adjT, m.adjW, m.adjH),
                                                                         m.groups)]
             elif name == 'SpatialReplicationPadding':
