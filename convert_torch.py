@@ -304,7 +304,7 @@ def torch_to_pytorch(t7_filename, outputname=None):
     s = '{}\n{}\n\n{} = {}'.format(header, '\n'.join(cvt.prefix_code), varname, s[:-2])
 
     if outputname is None:
-        outputname = varname
+        outputname = os.path.join('/tmp', varname)
 
     with open(outputname + '.py', "w") as pyfile:
         pyfile.write(s)
@@ -317,7 +317,7 @@ def torch_to_pytorch(t7_filename, outputname=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert torch t7 model to pytorch')
     parser.add_argument('--model', '-m', type=str, required=True, help='torch model file in t7 format')
-    parser.add_argument('--output', '-o', type=str, default='/tmp/model', help='output file name prefix, xxx.py xxx.pth')
+    parser.add_argument('--output', '-o', type=str, default=None, help='output file name prefix, xxx.py xxx.pth')
     args = parser.parse_args()
 
     torch_to_pytorch(args.model, args.output)
