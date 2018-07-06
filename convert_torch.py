@@ -14,41 +14,18 @@ from functools import reduce
 from torch.autograd import Variable
 from torch.utils.serialization import load_lua
 
-
-class LambdaBase(nn.Sequential):
-    def __init__(self, fn, *args):
-        super(LambdaBase, self).__init__(*args)
-        self.lambda_func = fn
-
-    def forward_prepare(self, input):
-        output = []
-        for module in self._modules.values():
-            output.append(module(input))
-        return output if output else input
-
-
-class Lambda(LambdaBase):
-    def forward(self, input):
-        return self.lambda_func(self.forward_prepare(input))
-
-
-class LambdaMap(LambdaBase):
-    def forward(self, input):
-        # result is Variables list [Variable1, Variable2, ...]
-        return list(map(self.lambda_func, self.forward_prepare(input)))
-
-
-class LambdaReduce(LambdaBase):
-    def forward(self, input):
-        # result is a Variable
-        return reduce(self.lambda_func, self.forward_prepare(input))
+from header import LambdaBase, Lambda, LambdaMap, LambdaReduce
 
 
 def copy_param(m, n):
-    if m.weight is not None: n.weight.data.copy_(m.weight)
-    if m.bias is not None: n.bias.data.copy_(m.bias)
-    if hasattr(n, 'running_mean'): n.running_mean.copy_(m.running_mean)
-    if hasattr(n, 'running_var'): n.running_var.copy_(m.running_var)
+    if m.weight is not None:
+        n.weight.data.copy_(m.weight, broadcast=False)
+    if hasattr(m, 'bias') and m.bias is not None:
+        n.bias.data.copy_(m.bias, broadcast=False)
+    if hasattr(n, 'running_mean'):
+        n.running_mean.copy_(m.running_mean, broadcast=False)
+    if hasattr(n, 'running_var'):
+        n.running_var.copy_(m.running_var, broadcast=False)
 
 
 def add_submodule(seq, *args):
@@ -165,7 +142,6 @@ def lua_recursive_source(module):
     s = []
     for m in module.modules:
         name = type(m).__name__
-        real = m
         if name == 'TorchObject':
             name = m._typename.replace('cudnn.', '')
             m = m._obj
