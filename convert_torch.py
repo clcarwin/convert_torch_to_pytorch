@@ -41,7 +41,9 @@ class LambdaReduce(LambdaBase):
 
 
 def copy_param(m,n):
-    if m.weight is not None: n.weight.data.copy_(m.weight)
+    if m.weight is not None:
+        m.weight.data = m.weight.view(n.weight.size())
+        n.weight.data.copy_(m.weight)
     if m.bias is not None: n.bias.data.copy_(m.bias)
     if hasattr(n,'running_mean'): n.running_mean.copy_(m.running_mean)
     if hasattr(n,'running_var'): n.running_var.copy_(m.running_var)
