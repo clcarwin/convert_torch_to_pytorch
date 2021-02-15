@@ -230,7 +230,7 @@ def lua_recursive_source(module):
             s += lua_recursive_source(m)
             s += [')']
         else:
-            s += '# ' + name + ' Not Implement,\n'
+            s += ['# ' + name + ' Not Implement']
     s = map(lambda x: '\t{}'.format(x),s)
     return s
 
