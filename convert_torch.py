@@ -152,6 +152,9 @@ def lua_recursive_model(module,seq):
         elif name == 'Tanh':
             n = nn.Tanh()
             add_submodule(seq, n)
+        elif name == 'MulConstant':
+            n = Lambda(lambda x: x * m.constant_scalar)
+            add_submodule(seq, n)
         elif name == 'TorchObject':
             print('Not Implement',name,real._typename)
         else:
@@ -234,6 +237,8 @@ def lua_recursive_source(module):
             s += [')']
         elif name == 'Tanh':
             s += ['nn.Tanh()']
+        elif name == 'MulConstant':
+            s += ['Lambda(lambda x: x*{}), # MulConstant'.format(m.constant_scalar)]
         else:
             s += '# ' + name + ' Not Implement,\n'
     s = map(lambda x: '\t{}'.format(x),s)
