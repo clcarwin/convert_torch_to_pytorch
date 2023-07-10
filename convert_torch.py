@@ -149,6 +149,9 @@ def lua_recursive_model(module,seq):
             n = LambdaReduce(lambda x,y,dim=dim: torch.cat((x,y),dim))
             lua_recursive_model(m,n)
             add_submodule(seq,n)
+        elif name == 'Tanh':
+            n = nn.Tanh()
+            add_submodule(seq, n)
         elif name == 'TorchObject':
             print('Not Implement',name,real._typename)
         else:
@@ -229,6 +232,8 @@ def lua_recursive_source(module):
             s += ['LambdaReduce(lambda x,y,dim={}: torch.cat((x,y),dim), # Concat'.format(m.dimension)]
             s += lua_recursive_source(m)
             s += [')']
+        elif name == 'Tanh':
+            s += ['nn.Tanh()']
         else:
             s += '# ' + name + ' Not Implement,\n'
     s = map(lambda x: '\t{}'.format(x),s)
