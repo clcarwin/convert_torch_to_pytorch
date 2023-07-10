@@ -158,6 +158,10 @@ def lua_recursive_model(module,seq):
         elif name == 'SpatialZeroPadding':
             n = nn.ConstantPad2d((m.pad_l, m.pad_r, m.pad_t, m.pad_b), 0)
             add_submodule(seq, n)
+        elif name == 'InstanceNormalization':
+            n = m._instance_norm
+            copy_param(m, n) # check this
+            add_submodule(seq, n)
         elif name == 'TorchObject':
             print('Not Implement',name,real._typename)
         else:
@@ -244,6 +248,8 @@ def lua_recursive_source(module):
             s += ['Lambda(lambda x: x*{}), # MulConstant'.format(m.constant_scalar)]
         elif name == 'SpatialZeroPadding':
             s += ['nn.ConstantPad2d({}, 0)'.format((m.pad_l, m.pad_r, m.pad_t, m.pad_b))]
+        elif name == 'InstanceNormalization':
+            s += ['nn.InstanceNorm2d({},{},{},{}), # InstanceNorm2d'.format(m._instance_norm.num_features, m.eps, m._instance_norm.momentum, m._instance_norm.affine)]
         else:
             s += '# ' + name + ' Not Implement,\n'
     s = map(lambda x: '\t{}'.format(x),s)
